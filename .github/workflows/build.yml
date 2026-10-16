@@ -1,0 +1,26 @@
+name: TWRP Citrine - Preflight
+
+on:
+workflow_dispatch:
+
+permissions:
+contents: read
+
+jobs:
+check:
+runs-on: ubuntu-latest
+steps:
+- name: Check out builder repository
+uses: actions/checkout@v4
+
+  - name: Show build environment
+    run: |
+      echo "Preparación de TWRP para Redmi Note 14 5G"
+      echo "Dispositivo: citrine"
+      echo "Android de referencia: 16"
+      df -h
+      free -h || true
+      git --version
+      python3 --version
+      echo "Esta ejecución solo verifica el entorno."
+      echo "No compila ni flashea imágenes."
