@@ -1,26 +1,27 @@
-name: Build Android APK
+
+name: TWRP Citrine - Preflight
 
 on:
-push:
-branches:
-- main
-- version-limpia
-workflow_dispatch:
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
-build:
-runs-on: ubuntu-latest
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out builder repository
+        uses: actions/checkout@v4
 
-steps:
-  - name: Checkout Source Code
-    uses: actions/checkout@v4
-
-  - name: Check Build Environment
-    run: |
-      echo "Preparando TWRP para Redmi Note 14 5G"
-      echo "Dispositivo: citrine"
-      echo "Android de referencia: 16"
-      df -h
-      git --version
-      python3 --version
-      echo "Verificacion terminada."
+      - name: Show build environment
+        run: |
+          echo "Preparacion de TWRP para Redmi Note 14 5G"
+          echo "Dispositivo: citrine"
+          echo "Android de referencia: 16"
+          df -h
+          free -h || true
+          git --version
+          python3 --version
+          echo "Esta ejecucion solo verifica el entorno."
+          echo "Todavia no compila ni flashea imagenes."
