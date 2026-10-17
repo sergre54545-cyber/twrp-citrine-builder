@@ -1,4 +1,3 @@
-
 name: TWRP Citrine - Preflight
 
 on:
@@ -16,12 +15,12 @@ jobs:
 
       - name: Show build environment
         run: |
-          echo "Preparacion de TWRP para Redmi Note 14 5G"
+          echo "Preparación de TWRP para Redmi Note 14 5G"
           echo "Dispositivo: citrine"
           echo "Android de referencia: 16"
           df -h
           free -h || true
           git --version
           python3 --version
-          echo "Esta ejecucion solo verifica el entorno."
-          echo "Todavia no compila ni flashea imagenes."
+          echo "Esta ejecución solo verifica el entorno."
+          echo "No compila ni flashea imágenes."
