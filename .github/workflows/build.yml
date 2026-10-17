@@ -1,6 +1,7 @@
 name: TWRP Citrine - Preflight
 
 on:
+  push:
   workflow_dispatch:
 
 permissions:
