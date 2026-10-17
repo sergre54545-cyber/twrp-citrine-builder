@@ -9,58 +9,43 @@ permissions:
 
 jobs:
   check:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - name: Check out builder repository
         uses: actions/checkout@v4
 
       - name: Show build environment
         run: |
-          echo "Preparación de TWRP para Redmi Note 14 5G"
-          echo "Dispositivo: citrine"
-          echo "Android de referencia: 16"
+          echo "Preparación de TWRP para Redmi Note 14 5G (citrine)"
           df -h
           free -h || true
-          git --version
-          python3 --version
-          echo "Esta ejecución solo verifica el entorno."
-          echo "No compila ni flashea imágenes."
 
-      - name: Fase 1 y 2 - Inspeccionar fuentes y repositorios
+      - name: Fase 2 Parte 2 - Inspeccionar Repo B y Kernel
         run: |
-          echo "=== 1. ARCHIVOS EN TWRP-CITRINE-BUILDER ==="
+          git clone --depth=1 https://github.com/twrpdtgen/android_device_xiaomi_beryl.git /tmp/repo_a 2>/dev/null
+          echo "=== 1. RECOVERY.FSTAB COMPLETO (REPO A) ==="
+          cat /tmp/repo_a/recovery.fstab || true
+
+          echo ""
+          echo "=== 2. INIT.RECOVERY.MT6855.RC (REPO A) ==="
+          cat /tmp/repo_a/recovery/root/init.recovery.mt6855.rc || true
+
+          git clone --depth=1 -b lineage-23.2-6.12 https://github.com/TracenPlayground/device_xiaomi_beryl.git /tmp/repo_b 2>/dev/null
+          echo ""
+          echo "=== 3. ARCHIVOS EN REPO B (LINEAGE 23.2) ==="
+          cd /tmp/repo_b
+          git log -n 1 --oneline
           find . -maxdepth 3 -not -path '*/.*'
 
           echo ""
-          echo "=== 2. RAMAS DEL MANIFIESTO OFICIAL DE TWRP ==="
-          git ls-remote --heads https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git || true
+          echo "=== 4. BOARDCONFIG.MK (REPO B) ==="
+          cat BoardConfig.mk || true
 
           echo ""
-          echo "=== 3. REPO A: twrpdtgen/android_device_xiaomi_beryl ==="
-          git clone --depth=1 https://github.com/twrpdtgen/android_device_xiaomi_beryl.git /tmp/repo_a || true
-          if [ -d /tmp/repo_a ]; then
-            cd /tmp/repo_a
-            git log -n 1 --oneline
-            find . -maxdepth 3 -not -path '*/.*'
-            echo "--- BoardConfig.mk (Repo A) ---"
-            cat BoardConfig.mk || true
-            echo "--- recovery.fstab (Repo A) ---"
-            find . -name "*fstab*" -exec head -n 120 {} + || true
-          fi
+          echo "=== 5. FSTAB Y ARCHIVOS DE RECOVERY EN REPO B ==="
+          find . -name "*fstab*" -exec echo "--- {} ---" \; -exec cat {} \; || true
+          grep -rn "vendor_boot\|recovery\|HEADER\|AVB" BoardConfig.mk device.mk 2>/dev/null || true
 
           echo ""
-          echo "=== 4. REPO B: TracenPlayground/device_xiaomi_beryl ==="
-          git clone --depth=1 -b lineage-23.2-6.12 https://github.com/TracenPlayground/device_xiaomi_beryl.git /tmp/repo_b || true
-          if [ -d /tmp/repo_b ]; then
-            cd /tmp/repo_b
-            git log -n 1 --oneline
-            find . -maxdepth 3 -not -path '*/.*'
-            echo "--- BoardConfig.mk (Repo B) ---"
-            cat BoardConfig.mk || true
-            echo "--- Archivos fstab (Repo B) ---"
-            find . -name "*fstab*" -exec head -n 120 {} + || true
-          fi
-
-          echo ""
-          echo "=== 5. REPO C: TracenPlayground/device_xiaomi_beryl-kernel ==="
-          git ls-remote --heads https://github.com/TracenPlayground/device_xiaomi_beryl-kernel.git || true
+          echo "=== 6. ARCHIVOS EN REPO C (KERNEL) ==="
+          curl -s "https://api.github.com/repos/TracenPlayground/device_xiaomi_beryl-kernel/git/trees/lineage-23.2-6.12?recursive=1" | grep '"path":' || true
