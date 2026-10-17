@@ -14,38 +14,30 @@ jobs:
       - name: Check out builder repository
         uses: actions/checkout@v4
 
-      - name: Show build environment
-        run: |
-          echo "Preparación de TWRP para Redmi Note 14 5G (citrine)"
-          df -h
-          free -h || true
-
-      - name: Fase 2 Parte 2 - Inspeccionar Repo B y Kernel
+      - name: Fase 2 Final - Leer Repo B (Lineage 23.2) y Repo C (Kernel)
         run: |
           git clone --depth=1 https://github.com/twrpdtgen/android_device_xiaomi_beryl.git /tmp/repo_a 2>/dev/null
-          echo "=== 1. RECOVERY.FSTAB COMPLETO (REPO A) ==="
-          cat /tmp/repo_a/recovery.fstab || true
-
-          echo ""
-          echo "=== 2. INIT.RECOVERY.MT6855.RC (REPO A) ==="
-          cat /tmp/repo_a/recovery/root/init.recovery.mt6855.rc || true
+          echo "=== 1. INIT.RECOVERY.MT6855.RC (REPO A) ==="
+          grep -vE '^\s*#|^\s*$' /tmp/repo_a/recovery/root/init.recovery.mt6855.rc || true
 
           git clone --depth=1 -b lineage-23.2-6.12 https://github.com/TracenPlayground/device_xiaomi_beryl.git /tmp/repo_b 2>/dev/null
-          echo ""
-          echo "=== 3. ARCHIVOS EN REPO B (LINEAGE 23.2) ==="
           cd /tmp/repo_b
+          echo ""
+          echo "=== 2. BOARDCONFIG.MK (REPO B - LINEAGE 23.2) ==="
           git log -n 1 --oneline
+          grep -vE '^\s*#|^\s*$' BoardConfig.mk || true
+
+          echo ""
+          echo "=== 3. CONFIGURACION RECOVERY Y VENDOR_BOOT EN DEVICE.MK (REPO B) ==="
+          grep -iE "recovery|vendor_boot|fstab|bootctrl|fastboot|mt6855|citrine|beryl" device.mk || true
+
+          echo ""
+          echo "=== 4. FSTAB DE ANDROID 16 (CIFRADO Y PARTICIONES EN REPO B) ==="
+          find . -name "*fstab*" -exec echo "Archivo: {}" \; -exec grep -E "userdata|metadata|boot|recovery|logical" {} \; || true
+
+          git clone --depth=1 -b lineage-23.2-6.12 https://github.com/TracenPlayground/device_xiaomi_beryl-kernel.git /tmp/repo_c 2>/dev/null
+          echo ""
+          echo "=== 5. ARCHIVOS Y VERSION EN REPO C (KERNEL) ==="
+          cd /tmp/repo_c
+          git log -n 2 --oneline
           find . -maxdepth 3 -not -path '*/.*'
-
-          echo ""
-          echo "=== 4. BOARDCONFIG.MK (REPO B) ==="
-          cat BoardConfig.mk || true
-
-          echo ""
-          echo "=== 5. FSTAB Y ARCHIVOS DE RECOVERY EN REPO B ==="
-          find . -name "*fstab*" -exec echo "--- {} ---" \; -exec cat {} \; || true
-          grep -rn "vendor_boot\|recovery\|HEADER\|AVB" BoardConfig.mk device.mk 2>/dev/null || true
-
-          echo ""
-          echo "=== 6. ARCHIVOS EN REPO C (KERNEL) ==="
-          curl -s "https://api.github.com/repos/TracenPlayground/device_xiaomi_beryl-kernel/git/trees/lineage-23.2-6.12?recursive=1" | grep '"path":' || true
