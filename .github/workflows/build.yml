@@ -1,43 +1,284 @@
-name: TWRP Citrine - Preflight
+name: TWRP Citrine - Build
 
 on:
   push:
+    branches:
+      - main
+    paths:
+      - '.github/workflows/build.yml'
   workflow_dispatch:
 
 permissions:
-  contents: read
+  contents: write
 
 jobs:
-  check:
+  build-twrp:
     runs-on: ubuntu-22.04
     steps:
-      - name: Check out builder repository
+      - name: 1. Check out builder repository
         uses: actions/checkout@v4
 
-      - name: Fase 2 Final - Leer Repo B (Lineage 23.2) y Repo C (Kernel)
+      - name: 2. Generar y guardar Device Tree de citrine en el repositorio
         run: |
-          git clone --depth=1 https://github.com/twrpdtgen/android_device_xiaomi_beryl.git /tmp/repo_a 2>/dev/null
-          echo "=== 1. INIT.RECOVERY.MT6855.RC (REPO A) ==="
-          grep -vE '^\s*#|^\s*$' /tmp/repo_a/recovery/root/init.recovery.mt6855.rc || true
+          mkdir -p device/xiaomi/citrine/recovery/root
+          mkdir -p device/xiaomi/citrine/prebuilt/dtb
 
-          git clone --depth=1 -b lineage-23.2-6.12 https://github.com/TracenPlayground/device_xiaomi_beryl.git /tmp/repo_b 2>/dev/null
-          cd /tmp/repo_b
-          echo ""
-          echo "=== 2. BOARDCONFIG.MK (REPO B - LINEAGE 23.2) ==="
-          git log -n 1 --oneline
-          grep -vE '^\s*#|^\s*$' BoardConfig.mk || true
+          git clone --depth=1 https://github.com/twrpdtgen/android_device_xiaomi_beryl.git /tmp/repo_a
+          git clone --depth=1 -b lineage-23.2-6.12 https://github.com/TracenPlayground/device_xiaomi_beryl-kernel.git /tmp/repo_c
 
-          echo ""
-          echo "=== 3. CONFIGURACION RECOVERY Y VENDOR_BOOT EN DEVICE.MK (REPO B) ==="
-          grep -iE "recovery|vendor_boot|fstab|bootctrl|fastboot|mt6855|citrine|beryl" device.mk || true
+          cp /tmp/repo_a/prebuilt/dtb.img device/xiaomi/citrine/prebuilt/dtb.img
+          cp /tmp/repo_c/dtb/mt6855.dtb device/xiaomi/citrine/prebuilt/dtb/mt6855.dtb
+          cp /tmp/repo_c/Image.lz4 device/xiaomi/citrine/prebuilt/Image.lz4
+          cp -r /tmp/repo_a/recovery/root/* device/xiaomi/citrine/recovery/root/ || true
 
-          echo ""
-          echo "=== 4. FSTAB DE ANDROID 16 (CIFRADO Y PARTICIONES EN REPO B) ==="
-          find . -name "*fstab*" -exec echo "Archivo: {}" \; -exec grep -E "userdata|metadata|boot|recovery|logical" {} \; || true
+          cat << 'EOF' > device/xiaomi/citrine/AndroidProducts.mk
+          PRODUCT_MAKEFILES := \
+              $(LOCAL_DIR)/twrp_citrine.mk
 
-          git clone --depth=1 -b lineage-23.2-6.12 https://github.com/TracenPlayground/device_xiaomi_beryl-kernel.git /tmp/repo_c 2>/dev/null
-          echo ""
-          echo "=== 5. ARCHIVOS Y VERSION EN REPO C (KERNEL) ==="
-          cd /tmp/repo_c
-          git log -n 2 --oneline
-          find . -maxdepth 3 -not -path '*/.*'
+          COMMON_LUNCH_CHOICES := \
+              twrp_citrine-eng \
+              twrp_citrine-userdebug
+          EOF
+
+          cat << 'EOF' > device/xiaomi/citrine/twrp_citrine.mk
+          $(call inherit-product, $(SRC_TARGET_DIR)/product/core_64_bit_only.mk)
+          $(call inherit-product, $(SRC_TARGET_DIR)/product/base.mk)
+          $(call inherit-product, $(SRC_TARGET_DIR)/product/emulated_storage.mk)
+          $(call inherit-product, vendor/twrp/config/common.mk)
+          $(call inherit-product, device/xiaomi/citrine/device.mk)
+
+          PRODUCT_NAME := twrp_citrine
+          PRODUCT_DEVICE := citrine
+          PRODUCT_BRAND := Redmi
+          PRODUCT_MODEL := Redmi Note 14 5G
+          PRODUCT_MANUFACTURER := Xiaomi
+          PRODUCT_GMS_CLIENTID_BASE := android-xiaomi
+          EOF
+
+          cat << 'EOF' > device/xiaomi/citrine/device.mk
+          LOCAL_PATH := device/xiaomi/citrine
+
+          AB_OTA_UPDATER := true
+          AB_OTA_PARTITIONS += \
+              boot \
+              init_boot \
+              vendor_boot \
+              dtbo \
+              vbmeta \
+              vbmeta_system \
+              vbmeta_vendor \
+              system \
+              system_ext \
+              system_dlkm \
+              vendor \
+              vendor_dlkm \
+              odm_dlkm \
+              product \
+              mi_ext
+
+          PRODUCT_USE_DYNAMIC_PARTITIONS := true
+          TARGET_ENABLE_MEDIATED_BOOT := true
+
+          PRODUCT_COPY_FILES += \
+              $(LOCAL_PATH)/prebuilt/Image.lz4:kernel
+
+          PRODUCT_PACKAGES += \
+              android.hardware.boot@1.2-impl \
+              android.hardware.boot@1.2-impl.recovery \
+              android.hardware.boot@1.2-service \
+              fastbootd \
+              mtk_plpath_utils \
+              mtk_plpath_utils.recovery \
+              snapuserd \
+              update_engine_sideload
+          EOF
+
+          cat << 'EOF' > device/xiaomi/citrine/BoardConfig.mk
+          DEVICE_PATH := device/xiaomi/citrine
+          ALLOW_MISSING_DEPENDENCIES := true
+
+          TARGET_ARCH := arm64
+          TARGET_ARCH_VARIANT := armv8-2a-dotprod
+          TARGET_CPU_ABI := arm64-v8a
+          TARGET_CPU_ABI2 :=
+          TARGET_CPU_VARIANT := generic
+          TARGET_CPU_VARIANT_RUNTIME := cortex-a76
+
+          TARGET_BOOTLOADER_BOARD_NAME := beryl
+          TARGET_NO_BOOTLOADER := true
+          TARGET_BOARD_PLATFORM := mt6855
+          TARGET_OTA_ASSERT_DEVICE := citrine,beryl
+
+          BOARD_BOOT_HEADER_VERSION := 4
+          BOARD_BOOTIMG_HEADER_VERSION := 4
+          BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT := true
+          BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT := true
+          BOARD_RAMDISK_USE_LZ4 := true
+          BOARD_USES_GENERIC_KERNEL_IMAGE := true
+
+          BOARD_KERNEL_BASE := 0x3fff8000
+          BOARD_KERNEL_OFFSET := 0x00008000
+          BOARD_RAMDISK_OFFSET := 0x26f08000
+          BOARD_KERNEL_TAGS_OFFSET := 0x07c88000
+          BOARD_DTB_OFFSET := 0x07c88000
+          BOARD_KERNEL_PAGESIZE := 4096
+          BOARD_KERNEL_CMDLINE := bootopt=64S3,32N2,64N2
+
+          TARGET_PREBUILT_DTB := $(DEVICE_PATH)/prebuilt/dtb.img
+          BOARD_PREBUILT_DTBIMAGE_DIR := $(DEVICE_PATH)/prebuilt/dtb
+          BOARD_INCLUDE_DTB_IN_BOOTIMG := true
+
+          BOARD_MKBOOTIMG_ARGS += --header_version $(BOARD_BOOTIMG_HEADER_VERSION)
+          BOARD_MKBOOTIMG_ARGS += --kernel_offset $(BOARD_KERNEL_OFFSET)
+          BOARD_MKBOOTIMG_ARGS += --ramdisk_offset $(BOARD_RAMDISK_OFFSET)
+          BOARD_MKBOOTIMG_ARGS += --tags_offset $(BOARD_KERNEL_TAGS_OFFSET)
+          BOARD_MKBOOTIMG_ARGS += --dtb_offset $(BOARD_DTB_OFFSET)
+          BOARD_MKBOOTIMG_ARGS += --dtb $(TARGET_PREBUILT_DTB)
+
+          BOARD_FLASH_BLOCK_SIZE := 262144
+          BOARD_BOOTIMAGE_PARTITION_SIZE := 67108864
+          BOARD_VENDOR_BOOTIMAGE_PARTITION_SIZE := 67108864
+          BOARD_INIT_BOOT_IMAGE_PARTITION_SIZE := 8388608
+          BOARD_DTBOIMG_PARTITION_SIZE := 8388608
+          BOARD_HAS_LARGE_FILESYSTEM := true
+
+          BOARD_SUPER_PARTITION_SIZE := 9126805504
+          BOARD_SUPER_PARTITION_GROUPS := xiaomi_dynamic_partitions
+          BOARD_XIAOMI_DYNAMIC_PARTITIONS_SIZE := 9122611200
+          BOARD_XIAOMI_DYNAMIC_PARTITIONS_PARTITION_LIST := \
+              system \
+              system_ext \
+              system_dlkm \
+              vendor \
+              vendor_dlkm \
+              odm_dlkm \
+              product \
+              mi_ext
+
+          TARGET_USERIMAGES_USE_EXT4 := true
+          TARGET_USERIMAGES_USE_F2FS := true
+          BOARD_USERDATAIMAGE_FILE_SYSTEM_TYPE := f2fs
+          BOARD_SYSTEMIMAGE_FILE_SYSTEM_TYPE := erofs
+          BOARD_VENDORIMAGE_FILE_SYSTEM_TYPE := erofs
+          TARGET_COPY_OUT_VENDOR := vendor
+
+          PLATFORM_VERSION := 16.0.0
+          PLATFORM_SECURITY_PATCH := 2026-06-05
+          VENDOR_SECURITY_PATCH := 2026-06-05
+
+          BOARD_AVB_ENABLE := true
+
+          TARGET_SCREEN_DENSITY := 450
+          TARGET_RECOVERY_PIXEL_FORMAT := BGRA_8888
+          TARGET_RECOVERY_FSTAB := $(DEVICE_PATH)/recovery.fstab
+          TW_THEME := portrait_hdpi
+          TW_EXTRA_LANGUAGES := true
+          TW_DEFAULT_LANGUAGE := es
+          TW_SCREEN_BLANK_ON_BOOT := true
+          TW_INPUT_BLACKLIST := "hbtp_vm"
+          TW_USE_TOOLBOX := true
+          TW_INCLUDE_REPACKTOOLS := true
+          TW_INCLUDE_CRYPTO := true
+          TW_INCLUDE_CRYPTO_FBE := true
+          TW_INCLUDE_FBE_METADATA_DECRYPT := true
+          TW_USE_FSCRYPT_POLICY := 2
+          TW_NO_FASTBOOT_BOOT := true
+          EOF
+
+          cat << 'EOF' > device/xiaomi/citrine/recovery.fstab
+          /system             erofs     system                                      flags=display="System";logical;slotselect;backup=1
+          /system             ext4      system                                      flags=display="System (EXT4)";logical;slotselect
+          /system_ext         erofs     system_ext                                  flags=display="System_EXT";logical;slotselect;backup=1
+          /system_ext         ext4      system_ext                                  flags=display="System_EXT (EXT4)";logical;slotselect
+          /vendor             erofs     vendor                                      flags=display="Vendor";logical;slotselect;backup=1
+          /vendor             ext4      vendor                                      flags=display="Vendor (EXT4)";logical;slotselect
+          /product            erofs     product                                     flags=display="Product";logical;slotselect;backup=1
+          /product            ext4      product                                     flags=display="Product (EXT4)";logical;slotselect
+          /mi_ext             erofs     mi_ext                                      flags=display="MI_EXT";logical;slotselect;backup=1
+          /mi_ext             ext4      mi_ext                                      flags=display="MI_EXT (EXT4)";logical;slotselect
+          /vendor_dlkm        erofs     vendor_dlkm                                 flags=display="Vendor_DLKM";logical;slotselect;backup=1
+          /vendor_dlkm        ext4      vendor_dlkm                                 flags=display="Vendor_DLKM (EXT4)";logical;slotselect
+          /odm_dlkm           erofs     odm_dlkm                                    flags=display="ODM_DLKM";logical;slotselect;backup=1
+          /odm_dlkm           ext4      odm_dlkm                                    flags=display="ODM_DLKM (EXT4)";logical;slotselect
+          /system_dlkm        erofs     system_dlkm                                 flags=display="System_DLKM";logical;slotselect;backup=1
+          /system_dlkm        ext4      system_dlkm                                 flags=display="System_DLKM (EXT4)";logical;slotselect
+          /super_image        emmc      /dev/block/by-name/super                    flags=display="Super (Imagen Completa)";backup=1;flashimg=1
+          /metadata           ext4      /dev/block/by-name/metadata                 flags=display="Metadata";backup=1;wrappedkey
+          /data               f2fs      /dev/block/by-name/userdata                 flags=fileencryption=aes-256-xts:aes-256-cts:v2+inlinecrypt_optimized+wrappedkey_v0,keydirectory=/metadata/vold/metadata_encryption,fsverity
+          /boot               emmc      /dev/block/by-name/boot                     flags=display="Boot";slotselect;backup=1;flashimg=1
+          /init_boot          emmc      /dev/block/by-name/init_boot                flags=display="Init_Boot";slotselect;backup=1;flashimg=1
+          /vendor_boot        emmc      /dev/block/by-name/vendor_boot              flags=display="Vendor_Boot (Recovery)";slotselect;backup=1;flashimg=1
+          /dtbo               emmc      /dev/block/by-name/dtbo                     flags=display="DTBO";slotselect;backup=1;flashimg=1
+          /vbmeta             emmc      /dev/block/by-name/vbmeta                   flags=display="VBMeta";slotselect;backup=1;flashimg=1
+          /vbmeta_system      emmc      /dev/block/by-name/vbmeta_system            flags=display="VBMeta_System";slotselect;backup=1;flashimg=1
+          /vbmeta_vendor      emmc      /dev/block/by-name/vbmeta_vendor            flags=display="VBMeta_Vendor";slotselect;backup=1;flashimg=1
+          /persist            ext4      /dev/block/by-name/persist                  flags=display="Persist";backup=1
+          /nvram              emmc      /dev/block/by-name/nvram                    flags=display="NVRAM (IMEI)";backup=1;flashimg=1
+          /nvdata             ext4      /dev/block/by-name/nvdata                   flags=display="NVData (IMEI)";backup=1
+          /nvcfg              ext4      /dev/block/by-name/nvcfg                    flags=display="NVCFG";backup=1
+          /protect_f          ext4      /dev/block/by-name/protect1                 flags=display="Protect_F";backup=1
+          /protect_s          ext4      /dev/block/by-name/protect2                 flags=display="Protect_S";backup=1
+          /persistent         emmc      /dev/block/by-name/frp                      flags=display="FRP";backup=1
+          /para               emmc      /dev/block/by-name/para                     flags=display="Para"
+          /misc               emmc      /dev/block/by-name/misc                     flags=display="Misc"
+          /external_sd        auto      /devices/platform/soc/11240000.mmc*         flags=display="Tarjeta MicroSD";storage;wipeingui;removable
+          /usb_otg            auto      /devices/platform/soc/mt_usb*               flags=display="USB-OTG";storage;wipeingui;removable
+          EOF
+
+          sed -i 's/^[ ]*//' device/xiaomi/citrine/AndroidProducts.mk
+          sed -i 's/^[ ]*//' device/xiaomi/citrine/twrp_citrine.mk
+          sed -i 's/^[ ]*//' device/xiaomi/citrine/device.mk
+          sed -i 's/^[ ]*//' device/xiaomi/citrine/BoardConfig.mk
+          sed -i 's/^[ ]*//' device/xiaomi/citrine/recovery.fstab
+
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add device/xiaomi/citrine
+          git diff --staged --quiet || (git commit -m "Fase 3: Agregar Device Tree adaptado de citrine" && git push origin main)
+
+      - name: 3. Liberar espacio y preparar entorno Linux (Fase 4)
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache
+          df -h
+          sudo apt-get update
+          sudo apt-get install -y bc bison build-essential ccache curl flex g++-multilib gcc-multilib git gnupg gperf imagemagick lib32ncurses5-dev lib32readline-dev lib32z1-dev liblz4-tool libncurses5 libncurses5-dev libsdl1.2-dev libssl-dev libxml2 libxml2-utils lzop pngcrush rsync schedtool squashfs-tools xsltproc zip zlib1g-dev python-is-python3
+          sudo curl --create-dirs -L -o /usr/local/bin/repo -O -L https://storage.googleapis.com/git-repo-downloads/repo
+          sudo chmod a+rx /usr/local/bin/repo
+
+      - name: 4. Sincronizar fuentes de TWRP 14.1
+        run: |
+          mkdir -p /home/runner/twrp
+          cd /home/runner/twrp
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-14.1
+          repo sync -c --no-clone-bundle --no-tags --optimized-fetch --prune --force-sync -j$(nproc --all)
+
+      - name: 5. Compilar TWRP para Redmi Note 14 5G (Fase 5)
+        run: |
+          mkdir -p /home/runner/twrp/device/xiaomi/citrine
+          cp -r $GITHUB_WORKSPACE/device/xiaomi/citrine/* /home/runner/twrp/device/xiaomi/citrine/
+          cd /home/runner/twrp
+          source build/envsetup.sh
+          export ALLOW_MISSING_DEPENDENCIES=true
+          lunch twrp_citrine-eng
+          mka adbd vendorbootimage 2>&1 | tee /home/runner/twrp/build.log
+
+      - name: 6. Recolectar imagenes y logs para verificacion (Fase 6)
+        if: always()
+        run: |
+          mkdir -p /home/runner/artifacts
+          cp /home/runner/twrp/build.log /home/runner/artifacts/ 2>/dev/null || true
+          tail -n 120 /home/runner/twrp/build.log || true
+          find /home/runner/twrp/out/target/product/citrine -maxdepth 2 -name "*.img" -o -name "*.cpio*" -o -name "*.lz4" 2>/dev/null | while read f; do
+            cp "$f" /home/runner/artifacts/
+          done
+          ls -lh /home/runner/artifacts/
+
+      - name: 7. Subir Artefactos Descargables
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: twrp-citrine-output
+          path: /home/runner/artifacts/
+          if-no-files-found: warn
