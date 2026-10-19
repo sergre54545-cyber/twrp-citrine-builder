@@ -1,20 +1,11 @@
-echo "=== 1. SCRIPTS .RC REALES DEL RECOVERY DE TU TELEFONO ==="
-for f in ~/twrp_work/recovery_ramdisk/*.rc; do
-  echo "--- Archivo: $(basename "$f") ---"
-  cat "$f"
-done
 
-echo ""
-echo "=== 2. BINARIOS Y HALS EN EL RECOVERY ORIGINAL ==="
-ls -la ~/twrp_work/recovery_ramdisk/system/bin/
-ls -la ~/twrp_work/recovery_ramdisk/system/bin/hw/ 2>/dev/null || true
-
-echo ""
-echo "=== 3. CONTENIDO DE BOOTCONFIG Y ESTRUCTURA DE VENDOR_RAMDISK00 ==="
-cat ~/twrp_work/unpacked_vendor_boot/bootconfig
-echo "--- Tipo de archivos en unpacked_vendor_boot ---"
-file ~/twrp_work/unpacked_vendor_boot/vendor_ramdisk00 ~/twrp_work/unpacked_vendor_boot/vendor_ramdisk01 ~/twrp_work/unpacked_vendor_boot/dtb
-
-echo ""
-echo "=== 4. TAMAÑO REAL DE LAS PARTICIONES EN EL TELEFONO ==="
-cat /proc/partitions | grep -E "sdc31|sdc32|sdc33|sdc34|sdc73|sdc74" || true
+      - name: Verificar kernel externo
+        run: |
+          git clone --depth=1 -b lineage-23.2-6.12 https://github.com/TracenPlayground/device_xiaomi_beryl-kernel.git /tmp/repo_c
+          echo "=== ARCHIVOS DEL KERNEL ==="
+          find /tmp/repo_c -maxdepth 3 -type f \( -name 'Image*' -o -name '*.dtb' -o -name '*.ko' \) | head -80
+          echo "=== VERSION DEL KERNEL EN MODULOS ==="
+          find /tmp/repo_c -type f -name '*.ko' | head -5 | while read f; do
+            echo "--- $f"
+            strings "$f" | grep -m 3 'vermagic=' || true
+          done
