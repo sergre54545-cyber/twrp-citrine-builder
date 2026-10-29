@@ -41,24 +41,40 @@ jobs:
           echo "=== Product makefile ==="
           cat device/xiaomi/citrine/twrp_citrine.mk
 
-      - name: Diagnose lunch configuration
+      - name: Probar combinaciones lunch
         shell: bash
         run: |
-          set -e
           export ALLOW_MISSING_DEPENDENCIES=true
           source build/envsetup.sh
-          echo "=== lunch function ==="
-          declare -f lunch
-          echo "=== Citrine product registration ==="
-          grep -Rni "twrp_citrine\|COMMON_LUNCH_CHOICES" device/xiaomi/citrine
-          echo "=== Release configuration files ==="
-          for dir in build/make/target/release build/release; do
-            if [ -d "$dir" ]; then
-              find "$dir" -maxdepth 3 -type f -print
+
+          echo "=== CONFIGURACIONES DE VERSION DISPONIBLES ==="
+          find build/release/build_config -maxdepth 1 -type f -name '*.scl' -printf '%f\n' 2>/dev/null | sort || true
+
+          echo "=== PRODUCTOS REGISTRADOS ==="
+          cat device/xiaomi/citrine/AndroidProducts.mk
+
+          releases=("trunk_staging")
+          while IFS= read -r file; do
+            releases+=("$(basename "$file" .scl)")
+          done < <(find build/release/build_config -maxdepth 1 -type f -name '*.scl' 2>/dev/null | sort)
+
+          echo "=== PRUEBAS LUNCH; SIN COMPILAR ==="
+          for release in "${releases[@]}"; do
+            combo="twrp_citrine-${release}-eng"
+            echo
+            echo ">>> Probando: $combo"
+
+            if lunch "$combo" > /tmp/citrine-lunch.log 2>&1; then
+              cat /tmp/citrine-lunch.log
+              echo "LUNCH_OK=$combo"
+              echo "TARGET_PRODUCT=${TARGET_PRODUCT:-no definido}"
+              echo "TARGET_RELEASE=${TARGET_RELEASE:-no definido}"
+              echo "TARGET_BUILD_VARIANT=${TARGET_BUILD_VARIANT:-no definido}"
+            else
+              cat /tmp/citrine-lunch.log
+              echo "LUNCH_FALLO=$combo"
             fi
           done
-          echo "=== Release configuration references ==="
-          grep -RniE 'release_config_map|trunk_staging|ap2a|ap1a' \
-            build/make/core build/make/target/release build/release \
-            2>/dev/null | head -200 || true
-          echo "=== Diagnostic complete; no lunch or build executed ==="
+
+          echo
+          echo "=== FIN: no se ejecutó ninguna compilación ==="
