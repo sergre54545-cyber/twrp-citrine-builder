@@ -84,6 +84,22 @@ jobs:
           grep -nE 'BOARD_BOOT_HEADER_VERSION|BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT|BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT|BOARD_VENDOR_BOOTIMAGE_PARTITION_SIZE|TARGET_PREBUILT_KERNEL' \
             device/xiaomi/citrine/BoardConfig.mk
 
+          echo "=== DIAGNOSTICO DE LA DEPENDENCIA FALLIDA ==="
+          echo "--- Declaraciones del modulo android.security.apc ---"
+          grep -R -n --include='Android.bp' --include='Android.mk' --include='*.mk' \
+            'android.security.apc-ndk_platform\|name: "android.security.apc' \
+            system frameworks packages build 2>/dev/null | head -80 || true
+
+          echo "--- Referencias generadas a android.security.apc ---"
+          grep -n -B 3 -A 3 'android.security.apc-ndk_platform' \
+            out/soong/build.twrp_citrine.ninja out/build-twrp_citrine.ninja \
+            out/build-twrp_citrine-package.ninja 2>/dev/null | head -120 || true
+
+          echo "--- Reglas generadas para libtar ---"
+          grep -n -B 3 -A 3 'libtar_intermediates/LINKED/libtar.so' \
+            out/soong/build.twrp_citrine.ninja out/build-twrp_citrine.ninja \
+            out/build-twrp_citrine-package.ninja 2>/dev/null | head -100 || true
+
           echo "=== COMPILAR vendorbootimage ==="
           mka vendorbootimage -j1
 
