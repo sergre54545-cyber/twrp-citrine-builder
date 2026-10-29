@@ -104,12 +104,6 @@ jobs:
           # Android 14 genera android.security.apc-ndk, pero libtar en
           # TWRP 14.1 puede solicitar por error el nombre -ndk_platform.
           # Crear stubs de compilación en ambas variantes de intermediarios.
-          for arch in android_arm64_armv8-a_shared android_arm64_armv8-a_shared_cfi; do
-            dir="out/target/product/citrine/obj/SHARED_LIBRARIES/android.security.apc-ndk_platform_intermediates"
-            mkdir -p "$dir"
-            touch "$dir/android.security.apc-ndk_platform.so"
-            touch "$dir/android.security.apc-ndk_platform.so.toc"
-          done
           for dir in \
             out/target/product/citrine/obj/SHARED_LIBRARIES/android.security.apc-ndk_platform_intermediates \
             out/target/product/citrine/obj_arm/SHARED_LIBRARIES/android.security.apc-ndk_platform_intermediates; do
