@@ -84,35 +84,29 @@ jobs:
           grep -nE 'BOARD_BOOT_HEADER_VERSION|BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT|BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT|BOARD_VENDOR_BOOTIMAGE_PARTITION_SIZE|TARGET_PREBUILT_KERNEL' \
             device/xiaomi/citrine/BoardConfig.mk
 
-          echo "=== DIAGNOSTICO DE LA DEPENDENCIA FALLIDA ==="
-          echo "--- Declaraciones del modulo android.security.apc ---"
-          grep -R -n --include='Android.bp' --include='Android.mk' --include='*.mk' \
-            'android.security.apc-ndk_platform\|name: "android.security.apc' \
-            system frameworks packages build 2>/dev/null | head -80 || true
+          echo "=== DIAGNOSTICO DE DEPENDENCIAS AIDL DE LIBTAR ==="
+          LIBTAR_MK="bootable/recovery/libtar/Android.mk"
+          if [ ! -f "$LIBTAR_MK" ]; then
+            echo "ERROR: no se encontro $LIBTAR_MK"
+            find bootable -path '*/libtar/Android.mk' -print 2>/dev/null | head -20 || true
+            exit 1
+          fi
+          echo "--- Dependencias originales ---"
+          grep -nE 'android\.(security\.(apc|authorization|maintenance)|system\.keystore2-V1)-ndk_platform' "$LIBTAR_MK" || true
 
-          echo "--- Referencias generadas a android.security.apc ---"
-          grep -n -B 3 -A 3 'android.security.apc-ndk_platform' \
-            out/soong/build.twrp_citrine.ninja out/build-twrp_citrine.ninja \
-            out/build-twrp_citrine-package.ninja 2>/dev/null | head -120 || true
+          echo "=== ADAPTAR LIBTAR A LOS MODULOS AIDL NDK ACTUALES ==="
+          # Los backends AIDL NDK actuales generan los modulos -ndk.
+          # TWRP/libtar aun declara las variantes antiguas -ndk_platform.
+          # Se corrigen las referencias reales; no se crean bibliotecas .so vacias.
+          sed -i -E 's/(android\.security\.(apc|authorization|maintenance)|android\.system\.keystore2-V1)-ndk_platform/\1-ndk/g' "$LIBTAR_MK"
 
-          echo "--- Reglas generadas para libtar ---"
-          grep -n -B 3 -A 3 'libtar_intermediates/LINKED/libtar.so' \
-            out/soong/build.twrp_citrine.ninja out/build-twrp_citrine.ninja \
-            out/build-twrp_citrine-package.ninja 2>/dev/null | head -100 || true
+          echo "--- Dependencias corregidas ---"
+          grep -nE 'android\.(security\.(apc|authorization|maintenance)|system\.keystore2-V1)-ndk' "$LIBTAR_MK" || true
 
-          echo "=== CORREGIR DEPENDENCIA AIDL DE TWRP 14.1 ==="
-          # Android 14 genera android.security.apc-ndk, pero libtar en
-          # TWRP 14.1 puede solicitar por error el nombre -ndk_platform.
-          # Crear stubs de compilación en ambas variantes de intermediarios.
-          for dir in \
-            out/target/product/citrine/obj/SHARED_LIBRARIES/android.security.apc-ndk_platform_intermediates \
-            out/target/product/citrine/obj_arm/SHARED_LIBRARIES/android.security.apc-ndk_platform_intermediates; do
-            mkdir -p "$dir"
-            touch "$dir/android.security.apc-ndk_platform.so"
-            touch "$dir/android.security.apc-ndk_platform.so.toc"
-          done
-          echo "=== STUBS CREADOS ==="
-          find out/target/product/citrine/obj out/target/product/citrine/obj_arm -path '*android.security.apc-ndk_platform*' -type f -print 2>/dev/null || true
+          if grep -nE 'android\.(security\.(apc|authorization|maintenance)|system\.keystore2-V1)-ndk_platform' "$LIBTAR_MK"; then
+            echo "ERROR: quedaron dependencias AIDL antiguas en libtar."
+            exit 1
+          fi
 
           echo "=== COMPILAR vendorbootimage ==="
           mka vendorbootimage -j1
