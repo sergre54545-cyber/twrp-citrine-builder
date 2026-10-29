@@ -1,60 +1,64 @@
-name: TWRP Citrine - Build
+name: TWRP Citrine - Diagnostico
 
 on:
-  push:
-    branches: [ main ]
   workflow_dispatch:
 
 permissions:
   contents: read
 
 jobs:
-  build:
+  diagnose:
     runs-on: ubuntu-22.04
     steps:
-      - name: Checkout builder repo (contains device tree)
+      - name: Checkout device tree
         uses: actions/checkout@v4
         with:
           path: builder
 
-      - name: Free disk space
-        run: |
-          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /usr/local/share/boost "$AGENT_TOOLSDIRECTORY" || true
-          df -h /
-
-      - name: Set up build environment
+      - name: Install build tools
         run: |
           sudo apt-get update
           sudo apt-get install -y git-core gnupg flex bison build-essential zip curl zlib1g-dev libc6-dev-i386 libncurses5 lib32ncurses5-dev x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig python-is-python3
-          mkdir -p ~/bin
-          curl -o ~/bin/repo https://storage.googleapis.com/git-repo-downloads/repo
-          chmod a+x ~/bin/repo
+          mkdir -p "$HOME/bin"
+          curl -fL https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo"
+          chmod +x "$HOME/bin/repo"
           echo "$HOME/bin" >> "$GITHUB_PATH"
-          git config --global user.email "ci@citrine.local"
-          git config --global user.name "CI citrine"
 
-      - name: Sync TWRP 14.1 sources
+      - name: Sync TWRP source
         run: |
-          repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-14.1
-          repo sync -j$(nproc --all) --force-sync --no-clone-bundle --no-tags -c
+          repo init --depth=1 \
+            -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git \
+            -b twrp-14.1
+          repo sync -j2 --force-sync --no-clone-bundle --no-tags -c
 
-      - name: Import device tree (kernel + DTB propios)
+      - name: Import device tree
         run: |
+          test -d builder/device/xiaomi/citrine
           mkdir -p device/xiaomi
           cp -r builder/device/xiaomi/citrine device/xiaomi/citrine
-          ls -l device/xiaomi/citrine/prebuilt/
+          echo "=== AndroidProducts.mk ==="
+          cat device/xiaomi/citrine/AndroidProducts.mk
+          echo "=== Product makefile ==="
+          cat device/xiaomi/citrine/twrp_citrine.mk
 
-      - name: Build TWRP vendor_boot
+      - name: Diagnose lunch configuration
+        shell: bash
         run: |
+          set -e
+          export ALLOW_MISSING_DEPENDENCIES=true
           source build/envsetup.sh
-          lunch twrp_citrine-eng
-          mka vendorbootimage
-
-      - name: Upload artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: twrp-citrine-vendor_boot
-          path: |
-            out/target/product/citrine/vendor_boot.img
-          if-no-files-found: warn
+          echo "=== lunch function ==="
+          declare -f lunch
+          echo "=== Citrine product registration ==="
+          grep -Rni "twrp_citrine\|COMMON_LUNCH_CHOICES" device/xiaomi/citrine
+          echo "=== Release configuration files ==="
+          for dir in build/make/target/release build/release; do
+            if [ -d "$dir" ]; then
+              find "$dir" -maxdepth 3 -type f -print
+            fi
+          done
+          echo "=== Release configuration references ==="
+          grep -RniE 'release_config_map|trunk_staging|ap2a|ap1a' \
+            build/make/core build/make/target/release build/release \
+            2>/dev/null | head -200 || true
+          echo "=== Diagnostic complete; no lunch or build executed ==="
