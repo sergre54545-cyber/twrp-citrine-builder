@@ -41,40 +41,54 @@ jobs:
           echo "=== Product makefile ==="
           cat device/xiaomi/citrine/twrp_citrine.mk
 
-      - name: Probar combinaciones lunch
+      - name: Compilar vendor_boot de Citrine
         shell: bash
         run: |
+          set -eo pipefail
           export ALLOW_MISSING_DEPENDENCIES=true
           source build/envsetup.sh
 
-          echo "=== CONFIGURACIONES DE VERSION DISPONIBLES ==="
-          find build/release/build_config -maxdepth 1 -type f -name '*.scl' -printf '%f\n' 2>/dev/null | sort || true
+          echo "=== CONFIGURAR PRODUCTO VALIDADO ==="
+          lunch twrp_citrine-ap2a-eng
 
-          echo "=== PRODUCTOS REGISTRADOS ==="
-          cat device/xiaomi/citrine/AndroidProducts.mk
+          echo "=== CONFIRMAR PRODUCTO Y VERSION ==="
+          echo "TARGET_PRODUCT=$TARGET_PRODUCT"
+          echo "TARGET_RELEASE=$TARGET_RELEASE"
+          echo "TARGET_BUILD_VARIANT=$TARGET_BUILD_VARIANT"
 
-          releases=("trunk_staging")
-          while IFS= read -r file; do
-            releases+=("$(basename "$file" .scl)")
-          done < <(find build/release/build_config -maxdepth 1 -type f -name '*.scl' 2>/dev/null | sort)
+          if [ "$TARGET_PRODUCT" != "twrp_citrine" ] ||
+             [ "$TARGET_RELEASE" != "ap2a" ]; then
+            echo "ERROR: la configuración no coincide con la validada."
+            exit 1
+          fi
 
-          echo "=== PRUEBAS LUNCH; SIN COMPILAR ==="
-          for release in "${releases[@]}"; do
-            combo="twrp_citrine-${release}-eng"
-            echo
-            echo ">>> Probando: $combo"
+          echo "=== CONFIGURACION DE VENDOR_BOOT ==="
+          grep -nE 'BOARD_BOOT_HEADER_VERSION|BOARD_INCLUDE_RECOVERY_RAMDISK_IN_VENDOR_BOOT|BOARD_MOVE_RECOVERY_RESOURCES_TO_VENDOR_BOOT|BOARD_VENDOR_BOOTIMAGE_PARTITION_SIZE|TARGET_PREBUILT_KERNEL' \
+            device/xiaomi/citrine/BoardConfig.mk
 
-            if lunch "$combo" > /tmp/citrine-lunch.log 2>&1; then
-              cat /tmp/citrine-lunch.log
-              echo "LUNCH_OK=$combo"
-              echo "TARGET_PRODUCT=${TARGET_PRODUCT:-no definido}"
-              echo "TARGET_RELEASE=${TARGET_RELEASE:-no definido}"
-              echo "TARGET_BUILD_VARIANT=${TARGET_BUILD_VARIANT:-no definido}"
-            else
-              cat /tmp/citrine-lunch.log
-              echo "LUNCH_FALLO=$combo"
-            fi
-          done
+          echo "=== COMPILAR vendorbootimage ==="
+          mka vendorbootimage -j2
 
-          echo
-          echo "=== FIN: no se ejecutó ninguna compilación ==="
+          echo "=== BUSCAR IMAGEN GENERADA ==="
+          find out/target/product -type f -name 'vendor_boot.img' -print
+
+          IMAGE="$(find out/target/product -type f -name 'vendor_boot.img' -print -quit)"
+          if [ -z "$IMAGE" ] || [ ! -s "$IMAGE" ]; then
+            echo "ERROR: no se encontró vendor_boot.img válido."
+            exit 1
+          fi
+
+          mkdir -p "$GITHUB_WORKSPACE/artifacts"
+          cp "$IMAGE" "$GITHUB_WORKSPACE/artifacts/vendor_boot.img"
+
+          echo "=== IMAGEN GENERADA ==="
+          ls -lh "$GITHUB_WORKSPACE/artifacts/vendor_boot.img"
+          sha256sum "$GITHUB_WORKSPACE/artifacts/vendor_boot.img"
+
+      - name: Publicar vendor_boot.img
+        uses: actions/upload-artifact@v4
+        with:
+          name: twrp-citrine-vendor-boot
+          path: artifacts/vendor_boot.img
+          if-no-files-found: error
+          retention-days: 7
