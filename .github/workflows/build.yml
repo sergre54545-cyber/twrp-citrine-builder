@@ -2,7 +2,8 @@ name: TWRP Citrine - Build
 
 on:
 push:
-branches: [ main ]
+branches:
+- main
 workflow_dispatch:
 
 permissions:
@@ -26,71 +27,55 @@ steps:
   - name: Set up build environment
     run: |
       sudo apt-get update
-      sudo apt-get install -y \
-        git-core gnupg flex bison build-essential zip curl \
-        zlib1g-dev libc6-dev-i386 libncurses5 lib32ncurses5-dev \
-        x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev \
-        libxml2-utils xsltproc unzip fontconfig python-is-python3
-
+      sudo apt-get install -y git-core gnupg flex bison build-essential zip curl zlib1g-dev libc6-dev-i386 libncurses5 lib32ncurses5-dev x11proto-core-dev libx11-dev lib32z1-dev libgl1-mesa-dev libxml2-utils xsltproc unzip fontconfig python-is-python3
       mkdir -p "$HOME/bin"
       curl -fL https://storage.googleapis.com/git-repo-downloads/repo -o "$HOME/bin/repo"
       chmod a+x "$HOME/bin/repo"
       echo "$HOME/bin" >> "$GITHUB_PATH"
-
       git config --global user.email "ci@citrine.local"
       git config --global user.name "CI citrine"
 
   - name: Sync TWRP 14.1 sources
     run: |
-      repo init --depth=1 \
-        -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git \
-        -b twrp-14.1
+      repo init --depth=1 -u https://github.com/minimal-manifest-twrp/platform_manifest_twrp_aosp.git -b twrp-14.1
+      repo sync -j"$(nproc --all)" --force-sync --no-clone-bundle --no-tags -c
 
-      repo sync -j"$(nproc --all)" \
-        --force-sync --no-clone-bundle --no-tags -c
-
-  - name: Import device tree (kernel + DTB propios)
+  - name: Import device tree
     run: |
       test -d builder/device/xiaomi/citrine
       mkdir -p device/xiaomi
       cp -r builder/device/xiaomi/citrine device/xiaomi/citrine
-
       echo "=== Device tree ==="
       ls -la device/xiaomi/citrine
-      echo "=== Prebuilt files ==="
-      ls -lh device/xiaomi/citrine/prebuilt/
-
       echo "=== Product definition ==="
       cat device/xiaomi/citrine/AndroidProducts.mk
 
-  - name: Configure TWRP build
+  - name: Inspect available lunch combinations
     run: |
       set -e
       source build/envsetup.sh
-
-      echo "=== Available lunch command help ==="
-      lunch --help || true
-
-      echo "=== Select Citrine product ==="
-      lunch twrp_citrine-trunk_staging-eng
+      echo "=== Product makefiles ==="
+      find device/xiaomi/citrine -maxdepth 2 -type f -print
+      echo "=== Lunch combinations matching Citrine ==="
+      lunch 2>&1 | grep -i -C 3 citrine || true
+      echo "=== Product registration ==="
+      grep -Rni "twrp_citrine" device/xiaomi/citrine
 
   - name: Build TWRP vendor_boot
     run: |
       set -e
       source build/envsetup.sh
-      lunch twrp_citrine-trunk_staging-eng
+      lunch twrp_citrine-eng
       mka vendorbootimage
 
   - name: Check generated image
     if: success()
     run: |
       IMAGE="out/target/product/citrine/vendor_boot.img"
-
       if [ ! -s "$IMAGE" ]; then
         echo "::error::vendor_boot.img was not generated or is empty."
         exit 1
       fi
-
       echo "=== Generated image ==="
       ls -lh "$IMAGE"
       sha256sum "$IMAGE"
