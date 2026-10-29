@@ -41,6 +41,24 @@ jobs:
           echo "=== Product makefile ==="
           cat device/xiaomi/citrine/twrp_citrine.mk
 
+      - name: Preparar memoria de intercambio
+        shell: bash
+        run: |
+          set -e
+          echo "=== MEMORIA ANTES DEL SWAP ==="
+          free -h
+          if [ ! -f /swapfile ]; then
+            sudo fallocate -l 8G /swapfile
+            sudo chmod 600 /swapfile
+            sudo mkswap /swapfile
+          fi
+          if ! swapon --show | grep -q '/swapfile'; then
+            sudo swapon /swapfile
+          fi
+          echo "=== MEMORIA DISPONIBLE ==="
+          free -h
+          swapon --show
+
       - name: Compilar vendor_boot de Citrine
         shell: bash
         run: |
@@ -67,7 +85,7 @@ jobs:
             device/xiaomi/citrine/BoardConfig.mk
 
           echo "=== COMPILAR vendorbootimage ==="
-          mka vendorbootimage -j2
+          mka vendorbootimage -j1
 
           echo "=== BUSCAR IMAGEN GENERADA ==="
           find out/target/product -type f -name 'vendor_boot.img' -print
